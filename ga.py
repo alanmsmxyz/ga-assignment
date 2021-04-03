@@ -1,101 +1,324 @@
 import random
 import json
 
-# Class definiing an invidiual within the population
-# It has a chromosome and fitness_score
-# It can crossover, mutate, and
-class Individual:
-    CHROMOSOME_COUNT = 11
+import os.path
+from os import path
 
-    TEST_FILE = open('./data_saham.json')
-    TEST_DATA = json.loads(TEST_FILE.read())['data']
+# CONFIGURE HERE
+CHROMOSOME_LENGTH = 11
+POPULATION_SIZE = 1000
+GENERATION_COUNT = 1000000
+MUTATION_PERCENTAGE = 5
 
-    def __init__(self, *args):
-        if len(args) == 0:
-            self.chromosome = self.generate_chromosome()
-        elif len(args) == 1:
-            self.chromosome = args[0].get_chromosome()
-        elif len(args) == 2:
-            chromosome_choices = (
-                args[0].get_chromosome(), args[1].get_chromosome())
-            self.chromosome = list(
-                chromosome_choices[random.randint(0, 1)][i] for i in range(Individual.CHROMOSOME_COUNT))
+# GeneticAlgorithm class
+# Used to intilize genetic algorithm processing
+# And also save it's result to a JSON file
+class GeneticAlgorithm:
+    # Constructior, initalize files used for the genetic algorithm
+    # @param input_file     - path to a JSON file containing data for fitness testing
+    # @param output_file    - path to JSON file that will be used to save the result to a JSON file
+    # @param log_file       - optional, path to a text file that will contains the log of GA process
+    def __init__(self, input_file, output_file, log_file=None):
+        assert path.isfile(input_file)
 
-    # internal functions
-    def generate_gene(self):
-        return random.uniform(-1, 1)
+        data_file = open(input_file, "r")
+        self.test_data = json.loads(data_file.read())["data"]
+        data_file.close()
 
-    def generate_chromosome(self):
-        return list(
-            self.generate_gene() for _ in range(Individual.CHROMOSOME_COUNT))
+        self.output_file = open(output_file, "w")
 
-    def calculate_fitness(self, verbose=False):
+        if log_file:
+            self.log_file = open(log_file, "w")
+
+        self.population = None
+
+        self.logger("__init__: input file %s, output file %s, log file %s" %
+                    (input_file, output_file, log_file))
+
+    # Destructor, used to cleanup file handles used during the GA process
+    def __del__(self):
+        self.output_file.close()
+
+        if hasattr(self, "log_file"):
+            self.log_file.close()
+
+    # Run the GA process
+    # @params generation_count - number of generation to iterate
+    def run(self, population, generation, mutation_percentage):
+        self.population = Population(population, mutation_percentage,
+                                     self.fitness_tester, self.logger)
+
+        for _ in range(generation):
+            self.population.iterate_generation()
+
+    # Centralized logger function to write log messages into log file
+    # This function is also used by Population and Individual class
+    def logger(self, log_entry):
+        if not hasattr(self, "log_file"):
+            return
+
+        self.log_file.write("%s\n" % (log_entry))
+
+    # Return a JSON containng GA result
+    def toJSON(self):
+        if not self.population:
+            print("Please run the instance first!")
+
+        result = {
+            "solution": {
+                "chromosome":
+                self.population.get_best_member().get_chromosome(),
+                "fitness_report":
+                self.population.get_best_member().get_fitness_report(),
+            },
+            "population": {
+                "size": self.population.get_size(),
+                "mutation_percentage":
+                self.population.get_mutation_percentage(),
+                "generation_count": self.population.get_size(),
+                "mutation_count": self.population.get_mutation_count(),
+                "best_members": [],
+            },
+        }
+
+        best_members = self.population.get_best_members()
+        for i in range(len(best_members)):
+            result["population"]["best_members"].append({
+                "fitness_score":
+                best_members[i].get_fitness_score(),
+                "chromosome": best_members[i].get_chromosome(),
+            })
+
+        return result
+
+    # Write the GA result into the output file
+    def write_output(self):
+        if not self.population:
+            print("Please run the instance first!")
+
+        json.dump(self.toJSON(), self.output_file, indent=2)
+
+    # Test the individual fitness scores
+    # Fitness score is defined as average percentage of deviation from the target value
+    # Lesser fitness scores means *better* individual
+    # @returns - a dictionary containing the test report
+    def fitness_tester(self, individual):
+        test_score = 0
+        test_results = []
+
         deviation_sum = 0
         deviation_count = 0
 
-        for i in range(0, len(Individual.TEST_DATA)-10):
-            fx = self.chromosome[0]
-            for j in range(0, 10):
-                fx += self.chromosome[j+1] * Individual.TEST_DATA[j+i]
+        chromosome = individual.get_chromosome()
 
-            target = Individual.TEST_DATA[j+i+1]
+        for i in range(0, len(self.test_data) - 10):
+            fx = chromosome[0]
+            for j in range(0, 10):
+                fx += chromosome[j + 1] * self.test_data[j + i]
+
+            target = self.test_data[j + i + 1]
+
             deviation = abs(((fx - target) / target) * 100)
+
             deviation_count += 1
             deviation_sum += deviation
 
-            if verbose:
-                print('%d. Prediction: %.2f, Real: %.2f, Deviation: %.3f' %
-                      (deviation_count, fx, target, deviation))
+            test_results.append({
+                "prediction": fx,
+                "target": target,
+                "deviation": deviation
+            })
 
-        fitness_score = deviation_sum / deviation_count
-        if verbose:
-            print('Total Test: %d, Average Deviation: %.3f' %
-                  (deviation_count, fitness_score))
+        test_score = deviation_sum / deviation_count
 
-        return fitness_score
+        return {"score": test_score, "test_result": test_results}
 
-    def mutate(self, verbose=False):
-        gene_to_mutate = random.randrange(0, Individual.CHROMOSOME_COUNT)
+
+# Individual Class
+# Used to model an individual within population.
+# Each individual will have a chromosome
+class Individual:
+    # Constructor, initialize individual based on parameters given
+    # @param parents        - optional, will use parents crossover chromosome if supplied
+    # @param chromosome     - optional, will use this chromosome if supplied
+    # @param fitness_tester - function to test fitness scores supplied by GeneticAlgorithm
+    def __init__(self,
+                 fitness_tester,
+                 chromosome=None,
+                 parents=None,
+                 population=None):
+        # if parents is supplied, derived chromosome from the parents using crossover
+        if parents:
+            self.__construct_from_crossover(parents)
+
+        # if chromosome is supplied, use the supplied chromosome
+        elif chromosome:
+            self.__construct_from_chromosome(chromosome)
+
+        # if nothing is supplied, generate chromosome randomly
+        else:
+            self.__construct_from_random()
+
+        self.fitness_tester = fitness_tester
+        self.fitness_report = self.fitness_tester(self)
+
+    # Called by constructor to intialize with random chromosome
+    def __construct_from_random(self):
+        self.chromosome = self.generate_chromosome()
+
+    # Called by constructor to intialize with supplied
+    def __construct_from_chromosome(self, chromosome):
+        self.chromosome = chromosome
+
+    # Called by constructor to intialize with crossover
+    def __construct_from_crossover(self, parents):
+        # determine which gene to choose from which parents
+        # if chromosome_selector[gene_index] is 0, chromosome[gene_index] will derived the from parent1
+        # and vice versa for parent2
+        chromosome_selector = [
+            random.randint(0, 1) for i in range(CHROMOSOME_LENGTH)
+        ]
+
+        # create new chromosome based on the chromosome_selector
+        self.chromosome = [
+            parents[chromosome_selector[i]][i] for i in chromosome_selector
+        ]
+
+    # Generate a random gene, a float between -1 and 1
+    def generate_gene(self):
+        return random.uniform(-1, 1)
+
+    # Generate a chromosome, consisting of configured length
+    def generate_chromosome(self):
+        return [self.generate_gene() for _ in range(CHROMOSOME_LENGTH)]
+
+    # Mutate a single gene in the chromosome
+    # Randomly select a gene within the chromosome, and change it with new random value
+    def mutate(self):
+        gene_to_mutate = random.randrange(0, CHROMOSOME_LENGTH)
         self.chromosome[gene_to_mutate] = self.generate_gene()
 
-    # getters
+        # Regenerate fitness report after mutation occurs
+        self.fitness_report = self.fitness_tester(self)
+
+    # Getter functions
     def get_chromosome(self):
         return self.chromosome
+
+    def get_fitness_report(self):
+        return self.fitness_report
 
     def get_fitness_score(self):
-        if not hasattr(self, 'fitness_score'):
-            self.fitness_score = self.calculate_fitness()
-
-        return self.fitness_score
-
-    def get_chromosome(self):
-        return self.chromosome
+        return self.fitness_report["score"]
 
 
+# Population Class
+# Used to manage Individuals as it's members
 class Population:
-    def __init__(self, size):
+    # Intialize population
+    # @param size - number of members within the population
+    def __init__(self, size, mutation_percentage, fitness_tester, logger):
         self.size = size
+        self.mutation_percentage = mutation_percentage
+
         self.generation_count = 0
         self.mutation_count = 0
-        self.members = list(Individual() for _ in range(size))
 
-        self.sort_population()
+        self.fitness_tester = fitness_tester
+        self.logger = logger
 
+        # generate population members and sort it from best members
+        members_temp = [
+            Individual(fitness_tester=fitness_tester) for _ in range(size)
+        ]
+
+        self.members = sorted(members_temp,
+                              key=lambda i: i.get_fitness_score())
+
+        # add best members from intial generation to best_members dictionary
+        # best_members dictionary is used to keep track of best_member changes within the population
         self.best_members = []
         self.best_members.append(self.members[0])
 
-    # internal function
-    def sort_population(self):
-        self.members = sorted(
-            self.members, key=lambda i: i.get_fitness_score())
-        self.isSorted = True
+    # Since the population is always kept at certain size due to elimination
+    # Parent selection will only create a randomize copy of current population members
+    def parents_selection(self):
+        return random.sample(self.members, self.size)
 
-    # getters
+    # Members selection choose which members to keep for next generation
+    # This keep population size constant by eliminating worst members of the population
+    def members_selection(self):
+        return self.members[0:self.size]
+
+    # Add a new member into population
+    # New member will be inserted into certain positions according to its fitness score
+    # This makes the members list sorted
+    def add_member(self, new_member):
+        pos = len(self.members)
+        while (new_member.get_fitness_score() <
+               self.members[pos - 1].get_fitness_score() and pos > 0):
+            pos -= 1
+
+        self.members.insert(pos, new_member)
+
+    # Iterate generation of the population
+    # The process consists of:
+    # - Parents selection
+    # - Breeding with crossover
+    # - Mutation
+    # - Members selection / elimination
+    # - Best member selection
+    def iterate_generation(self, verbose=False):
+        self.logger(
+            "iterate_generation: generation %d, best score %.3f, best chromosome %s"
+            % (
+                self.get_generation_count(),
+                self.get_best_member().get_fitness_score(),
+                self.get_best_member().get_chromosome(),
+            ))
+
+        # Select parents for the breeding process
+        parents = self.parents_selection()
+
+        # Breed the selected parents to generate offsprings Individual
+        while len(parents) > 0:
+            p1 = parents.pop().get_chromosome()
+            p2 = parents.pop().get_chromosome()
+            child = Individual(parents=(p1, p2),
+                               fitness_tester=self.fitness_tester)
+            self.add_member(child)
+
+        # Randomly select a member within the population to mutate within the configured probability
+        if random.randint(0, 100) < self.mutation_percentage:
+            # removed member that will be mutated from the members list
+            index_to_mutate = random.randrange(1, self.size)
+            member_to_mutate = self.members.pop(index_to_mutate)
+
+            # mutate the selected member, then add it back to members list
+            member_to_mutate.mutate()
+            self.add_member(member_to_mutate)
+
+            self.mutation_count += 1
+
+        # Eliminate worst member excess of population size
+        self.members = self.members_selection()
+
+        # Select best members from the population
+        if self.members[0] != self.best_members[-1]:
+            self.best_members.append(self.members[0])
+
+        # Keep track of the generations count
+        self.generation_count += 1
+
+    # Getter Functions
     def get_size(self):
         return len(self.members)
 
     def get_generation_count(self):
         return self.generation_count
+
+    def get_mutation_percentage(self):
+        return self.mutation_percentage
 
     def get_mutation_count(self):
         return self.mutation_count
@@ -112,73 +335,13 @@ class Population:
     def get_best_members(self):
         return self.best_members
 
-    # GA Functions
-    def iterate_generation(self, verbose=False):
-        if verbose:
-            print('Interating Generation %d | Current Best : %.3f' % (
-                self.get_generation_count(),
-                self.get_best_member().get_fitness_score(),
-            )
-            )
 
-        parents = random.sample(self.members, self.size)
+if __name__ == "__main__":
+    ga = GeneticAlgorithm("./data/AAPL.json", "./output/AAPL.json", "./output/AAPL.log")
+    ga.run(
+        population=POPULATION_SIZE,
+        generation=GENERATION_COUNT,
+        mutation_percentage=MUTATION_PERCENTAGE,
+    )
 
-        while(len(parents) > 0):
-            p1 = parents.pop()
-            p2 = parents.pop()
-            self.members.append(Individual(p1, p2))
-
-        self.sort_population()
-        self.members = self.members[0:self.size]
-
-        if random.randint(0, 100) < 5:
-            self.get_member(
-                random.randrange(0, self.size)
-            ).mutate()
-            self.mutation_count += 1
-
-        if self.members[0] != self.best_members[-1]:
-            self.best_members.append(self.members[0])
-
-        self.generation_count += 1
-
-
-if __name__ == '__main__':
-    POPULATION_SIZE = 1000
-    GENERATION_COUNT = 20000
-
-    print('Running GA with population size %d over %d generations...' %
-          (POPULATION_SIZE, GENERATION_COUNT))
-
-    population = Population(POPULATION_SIZE)
-
-    for i in range(GENERATION_COUNT):
-        population.iterate_generation(verbose=True)
-
-    # REPORT
-    best_members = population.get_best_members()
-    best_member = best_members[-1]
-
-    print()
-    print('-----------')
-    print('Population Summary')
-    print('Mutation count       : %d' % (population.get_mutation_count()))
-    print('Best member changes  : %d' % (len(best_members)))
-    print('Best member history  :')
-
-    for i in range(len(best_members)):
-        print('%d. Fitness Score: %.3f, Chromosome: %s' % (
-            i+1,
-            best_members[i].get_fitness_score(),
-            best_members[i].get_chromosome())
-        )
-
-    print()
-    print('-----------')
-    print('Final Best Member')
-
-    print('Chromosome:')
-    print(best_member.get_chromosome())
-
-    print('Test Result:')
-    best_member.calculate_fitness(verbose=True)
+    ga.write_output()
