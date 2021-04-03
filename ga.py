@@ -10,10 +10,10 @@ OUTPUT_DIR = './output'
 
 CHROMOSOME_LENGTH = 11
 
-POPULATION_SIZE = 400
-GENERATION_COUNT = 1000
+POPULATION_SIZE = 1000
+GENERATION_COUNT = 1000000
 
-MUTATION_PERCENTAGE = 10
+MUTATION_PERCENTAGE = 25
 
 
 # GeneticAlgorithm class
@@ -59,7 +59,7 @@ class GeneticAlgorithm:
         for _ in range(generation):
             self.population.iterate_generation()
 
-    # Return a JSON containng GA result
+    # Return a JSON containing GA result
     def toJSON(self):
         if not self.population:
             print("Please run the instance first!")
@@ -287,13 +287,18 @@ class Population:
         while len(parents) > 0:
             p1 = parents.pop().get_chromosome()
             p2 = parents.pop().get_chromosome()
-            child = Individual(parents=(p1, p2),
-                               fitness_tester=self.fitness_tester)
-            self.add_member(child)
+            child1 = Individual(parents=(p1, p2),
+                                fitness_tester=self.fitness_tester)
+            child2 = Individual(parents=(p1, p2),
+                                fitness_tester=self.fitness_tester)
+
+            self.add_member(child1)
+            self.add_member(child2)
 
         # Randomly select a member within the population to mutate within the configured probability
+        # Best member (current solution) are protected from mutation to avoid setbacks
         if random.randint(0, 100) < self.mutation_percentage:
-            # removed member that will be mutated from the members list
+            # remove member that will be mutated from the members list
             index_to_mutate = random.randrange(1, self.size)
             member_to_mutate = self.members.pop(index_to_mutate)
 
