@@ -11,9 +11,9 @@ OUTPUT_DIR = './output'
 CHROMOSOME_LENGTH = 11
 
 POPULATION_SIZE = 400
-GENERATION_COUNT = 10000
+GENERATION_COUNT = 40000
 
-MUTATION_PERCENTAGE = 25
+MUTATION_PERCENTAGE = 10
 
 
 # GeneticAlgorithm class
@@ -135,6 +135,7 @@ class GeneticAlgorithm:
             deviation_sum += deviation
 
             test_results.append({
+                "day": i + 1,
                 "prediction": fx,
                 "target": target,
                 "deviation": deviation
