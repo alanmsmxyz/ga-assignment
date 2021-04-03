@@ -53,7 +53,9 @@ class GeneticAlgorithm:
             self.f_log.close()
 
     # Run the GA process
-    # @params generation_count - number of generation to iterate
+    # @param population - number of members within the population
+    # @param generation - number of generation to iterate
+    # @param mutation_percentage - percentage of mutation for each generation iteration
     def run(self, population, generation, mutation_percentage):
         self.population = Population(population, mutation_percentage,
                                      self.fitness_tester, self.logger)
@@ -109,6 +111,7 @@ class GeneticAlgorithm:
     # Test the individual fitness scores
     # Fitness score is defined as average percentage of deviation from the target value
     # Lesser fitness scores means *better* individual
+    # @param individual - Individual object to test
     # @returns - a dictionary containing the test report
     def fitness_tester(self, individual):
         test_score = 0
@@ -147,6 +150,7 @@ class GeneticAlgorithm:
 # Each individual will have a chromosome
 class Individual:
     # Constructor, initialize individual based on parameters given
+    # @param fitness_tester - function to test fitness of the members
     # @param parents        - optional, will use parents crossover chromosome if supplied
     # @param chromosome     - optional, will use this chromosome if supplied
     # @param fitness_tester - function to test fitness scores supplied by GeneticAlgorithm
@@ -175,10 +179,12 @@ class Individual:
         self.chromosome = self.generate_chromosome()
 
     # Called by constructor to intialize with supplied
+    # @param chromosome - a list representing chromosome
     def __construct_from_chromosome(self, chromosome):
         self.chromosome = chromosome
 
     # Called by constructor to intialize with crossover
+    # @param parents - a list or tuple containing 2 Individual
     def __construct_from_crossover(self, parents):
         # determine which gene to choose from which parents
         # if chromosome_selector[gene_index] is 0, chromosome[gene_index] will derived the from parent1
@@ -224,7 +230,10 @@ class Individual:
 # Used to manage Individuals as it's members
 class Population:
     # Intialize population
-    # @param size - number of members within the population
+    # @param population - number of members within the population
+    # @param mutation_percentage - percentage of mutation for each generation iteration
+    # @param fitness_tester - function to test fitness of the members
+    # @param logger - function to write to log file
     def __init__(self, size, mutation_percentage, fitness_tester, logger):
         self.size = size
         self.mutation_percentage = mutation_percentage
@@ -261,6 +270,7 @@ class Population:
     # Add a new member into population
     # New member will be inserted into certain positions according to its fitness score
     # This makes the members list sorted
+    # @param new_member - Individual to add as a member
     def add_member(self, new_member):
         pos = len(self.members)
         while (new_member.get_fitness_score() <
@@ -270,7 +280,7 @@ class Population:
 
     # Set Best Member
     # The best member is saved as a new instance of supplied member in best_members list
-    # @param member - member set as best_member
+    # @param member - member to set as best_member
     def set_best_member(self, member):
         self.best_members.append(
             Individual(self.fitness_tester,
@@ -283,7 +293,7 @@ class Population:
     # - Mutation
     # - Members selection / elimination
     # - Best member selection
-    def iterate_generation(self, verbose=False):
+    def iterate_generation(self):
         self.logger(
             "iterate_generation: generation %d, best score %.3f, best chromosome %s"
             % (
