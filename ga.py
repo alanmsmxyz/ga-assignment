@@ -246,7 +246,7 @@ class Population:
         # add best members from intial generation to best_members dictionary
         # best_members dictionary is used to keep track of best_member changes within the population
         self.best_members = []
-        self.best_members.append(self.members[0])
+        self.set_best_member(self.members[0])
 
     # Since the population is always kept at certain size due to elimination
     # Parent selection will only create a randomize copy of current population members
@@ -266,8 +266,15 @@ class Population:
         while (new_member.get_fitness_score() <
                self.members[pos - 1].get_fitness_score() and pos > 0):
             pos -= 1
-
         self.members.insert(pos, new_member)
+
+    # Set Best Member
+    # The best member is saved as a new instance of supplied member in best_members list
+    # @param member - member set as best_member
+    def set_best_member(self, member):
+        self.best_members.append(
+            Individual(self.fitness_tester,
+                       chromosome=member.get_chromosome()))
 
     # Iterate generation of the population
     # The process consists of:
@@ -317,8 +324,9 @@ class Population:
         self.members = self.members_selection()
 
         # Select best members from the population
-        if self.members[0] != self.best_members[-1]:
-            self.best_members.append(self.members[0])
+        if self.members[0].get_chromosome(
+        ) != self.best_members[-1].get_chromosome():
+            self.set_best_member(self.members[0])
 
         # Keep track of the generations count
         self.generation_count += 1
