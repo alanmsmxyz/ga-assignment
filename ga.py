@@ -2,13 +2,19 @@ import random
 import json
 
 import os.path
-from os import path
+from os import path, walk
 
 # CONFIGURE HERE
+INPUT_DIR = './input'
+OUTPUT_DIR = './output'
+
 CHROMOSOME_LENGTH = 11
-POPULATION_SIZE = 1000
-GENERATION_COUNT = 1000000
-MUTATION_PERCENTAGE = 5
+
+POPULATION_SIZE = 400
+GENERATION_COUNT = 1000
+
+MUTATION_PERCENTAGE = 10
+
 
 # GeneticAlgorithm class
 # Used to intilize genetic algorithm processing
@@ -25,22 +31,24 @@ class GeneticAlgorithm:
         self.test_data = json.loads(data_file.read())["data"]
         data_file.close()
 
-        self.output_file = open(output_file, "w")
+        self.output_file = output_file
 
         if log_file:
-            self.log_file = open(log_file, "w")
+            self.f_log = open(log_file, "w")
+            self.logger = lambda entry: self.f_log.write("%s\n" % (entry))
+        else:
+            self.logger = lambda *args: None
 
         self.population = None
 
-        self.logger("__init__: input file %s, output file %s, log file %s" %
-                    (input_file, output_file, log_file))
+        self.logger("__init__: input file %s, output file %s" %
+                    (input_file, output_file))
 
     # Destructor, used to cleanup file handles used during the GA process
     def __del__(self):
-        self.output_file.close()
-
+        self.logger("__del__: cleaning up file handler...\n")
         if hasattr(self, "log_file"):
-            self.log_file.close()
+            self.f_log.close()
 
     # Run the GA process
     # @params generation_count - number of generation to iterate
@@ -50,14 +58,6 @@ class GeneticAlgorithm:
 
         for _ in range(generation):
             self.population.iterate_generation()
-
-    # Centralized logger function to write log messages into log file
-    # This function is also used by Population and Individual class
-    def logger(self, log_entry):
-        if not hasattr(self, "log_file"):
-            return
-
-        self.log_file.write("%s\n" % (log_entry))
 
     # Return a JSON containng GA result
     def toJSON(self):
@@ -73,9 +73,9 @@ class GeneticAlgorithm:
             },
             "population": {
                 "size": self.population.get_size(),
+                "generation_count": self.population.get_generation_count(),
                 "mutation_percentage":
                 self.population.get_mutation_percentage(),
-                "generation_count": self.population.get_size(),
                 "mutation_count": self.population.get_mutation_count(),
                 "best_members": [],
             },
@@ -86,7 +86,8 @@ class GeneticAlgorithm:
             result["population"]["best_members"].append({
                 "fitness_score":
                 best_members[i].get_fitness_score(),
-                "chromosome": best_members[i].get_chromosome(),
+                "chromosome":
+                best_members[i].get_chromosome(),
             })
 
         return result
@@ -96,7 +97,9 @@ class GeneticAlgorithm:
         if not self.population:
             print("Please run the instance first!")
 
-        json.dump(self.toJSON(), self.output_file, indent=2)
+        f_output = open(self.output_file, 'w')
+        json.dump(self.toJSON(), f_output, indent=2)
+        f_output.close()
 
     # Test the individual fitness scores
     # Fitness score is defined as average percentage of deviation from the target value
@@ -337,11 +340,26 @@ class Population:
 
 
 if __name__ == "__main__":
-    ga = GeneticAlgorithm("./data/AAPL.json", "./output/AAPL.json", "./output/AAPL.log")
-    ga.run(
-        population=POPULATION_SIZE,
-        generation=GENERATION_COUNT,
-        mutation_percentage=MUTATION_PERCENTAGE,
-    )
+    _, _, input_files = next(walk(INPUT_DIR))
 
-    ga.write_output()
+    for i in range(len(input_files)):
+        filename = input_files[i]
+        name, ext = path.splitext(filename)
+
+        if ext == '.json':
+            print("Processing file %s..." % (filename))
+
+            ga = GeneticAlgorithm(path.join(INPUT_DIR, filename),
+                                  path.join(OUTPUT_DIR, filename),
+                                  path.join(OUTPUT_DIR, "%s.log" % (name)))
+            ga.run(
+                population=POPULATION_SIZE,
+                generation=GENERATION_COUNT,
+                mutation_percentage=MUTATION_PERCENTAGE,
+            )
+
+            ga.write_output()
+
+            del ga
+        else:
+            print("Skipping file %s..." % (filename))
