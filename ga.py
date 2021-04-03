@@ -11,7 +11,7 @@ OUTPUT_DIR = './output'
 CHROMOSOME_LENGTH = 11
 
 POPULATION_SIZE = 1000
-GENERATION_COUNT = 1000000
+GENERATION_COUNT = 10
 
 MUTATION_PERCENTAGE = 25
 
@@ -34,7 +34,9 @@ class GeneticAlgorithm:
         self.output_file = output_file
 
         if log_file:
+            os.makedirs(os.path.dirname(log_file), exist_ok=True)
             self.f_log = open(log_file, "w")
+
             self.logger = lambda entry: self.f_log.write("%s\n" % (entry))
         else:
             self.logger = lambda *args: None
@@ -97,8 +99,11 @@ class GeneticAlgorithm:
         if not self.population:
             print("Please run the instance first!")
 
+        os.makedirs(os.path.dirname(self.output_file), exist_ok=True)
         f_output = open(self.output_file, 'w')
+
         json.dump(self.toJSON(), f_output, indent=2)
+
         f_output.close()
 
     # Test the individual fitness scores
