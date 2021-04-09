@@ -1,3 +1,11 @@
+# CTI2G3 IT-42-03
+# PROGRAMMING ASSIGNMENT 1
+# GENETIC ALGORITHM
+# Group 2
+# 1303183135 - Byatriasa Pakarti Linuwih
+# 1303181095 - Mochamad Syarief Maulana
+# 1303181110 - Muhammad Rifqi Shiddiq
+
 import random
 import json
 
@@ -10,10 +18,10 @@ OUTPUT_DIR = './output'
 
 CHROMOSOME_LENGTH = 11
 
-POPULATION_SIZE = 400
-GENERATION_COUNT = 40000
+POPULATION_SIZE = 1000
+GENERATION_COUNT = 1000000
 
-MUTATION_PERCENTAGE = 10
+MUTATION_PERCENTAGE = 25
 
 
 # GeneticAlgorithm class
